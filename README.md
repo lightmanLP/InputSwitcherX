@@ -7,7 +7,7 @@
 2. Launch installer, click ```add python to PATH```
 3. Clone this repository and cd there with command:
 ```bash
-git clone https://github.com/StormExecute/InputSwitcherX.git && cd InputSwitcherX
+git clone https://github.com/lightmanLP/InputSwitcherX.git && cd InputSwitcherX
 ```
 4. Apply the patch with the following command :
 ```bash
