@@ -82,10 +82,13 @@ class Patch:
         os.system("start %windir%\\explorer.exe")
 
         if has_errors:
-            print("Патч завершился с ошибками. Это есть не добрый знак. Попытайтесь откатить изменения с помощью \"python offPatch.py\"")
+            log.info(
+                "Патч завершился с ошибками. Это есть не добрый знак."
+                'Попытайтесь откатить изменения с помощью "python enable_switcher.py"'
+            )
             sys.exit(1)
         else:
-            print("Done!")
+            log.info("Done!")
             sys.exit(0)
 
     def patch_dir(self, path: Path):
