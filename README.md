@@ -11,7 +11,7 @@ git clone https://github.com/StormExecute/InputSwitcherX.git && cd InputSwitcher
 ```
 4. Apply the patch with the following command :
 ```bash
-python usePatch.py
+python disable_switcher.py
 ```
 
 ## Roll back the patch
@@ -19,7 +19,7 @@ python usePatch.py
 Requires a directory "backup":
 
 ```bash
-python offPatch.py
+python enable_switcher.py
 ```
 
 ## Another patching way (old)
