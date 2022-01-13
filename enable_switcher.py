@@ -17,7 +17,7 @@ if not windll.shell32.IsUserAnAdmin():
     print("Please run script as admin!")
     sys.exit(1)
 if not BACKUPS_PATH.exists() and BACKUPS_PATH.is_dir():
-    print("Backup directory does not exist!")
+    print("Backup directory does not exists!")
     sys.exit(1)
 
 os.system("taskkill /F /IM explorer.exe")

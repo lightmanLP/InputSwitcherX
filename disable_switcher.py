@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict
 from binascii import unhexlify, hexlify
 from pathlib import Path
 from ctypes import windll
@@ -14,6 +14,15 @@ WIN_SXS_PATH = WIN_PATH / "WinSxS"
 EXEC_PATH = Path(__file__).parent.absolute()
 BACKUPS_PATH = EXEC_PATH / "backup"
 DLL_NAME = "InputSwitch.dll"
+INROW_REPLACE_TRIGGERS: Dict[int, str] = {
+    0: "ff",
+    1: "ff",
+    2: "83",
+    3: "f8",
+    4: "ff",
+    5: "33",
+    6: "c0",
+}
 
 
 def bulk_exec(*command: str):
@@ -79,13 +88,6 @@ class Patch:
             print("Done!")
             sys.exit(0)
 
-#     def warn(self, warntext):
-#         print(f"WARN! FilePath: {self.filePath} : {warntext}")
-#
-#     def error(self, error):
-#         self.hasErrors = True
-#         print(f"ERROR! FilePath: {self.filePath} : {error}")
-
     def patch_dir(self, path: Path):
         dll_path = path / DLL_NAME
         if not dll_path.exists():
@@ -132,47 +134,36 @@ class Patch:
 
         in_row = 0
         max_area = 40
-        res = 0
+        res = False
         for i, h in enumerate(hex_list):
             if in_row >= 5:
                 if max_area <= 0:
                     break
-
                 max_area -= 1
                 hex_list[i] = "90"
 
-                if (
-                    (in_row == 5 and h == "33")
-                    or (in_row == 6 and h == "c0")
-                ):
-                    in_row += 1
-                elif in_row == 7 and h in ("48", "8b"):
-                    # final
-                    hex_list[i] = h
-                    hex_list[i - 1] = "c0"
-                    hex_list[i - 2] = "33"
-                    res = 1
-                    break
-
-            elif (
-                (in_row == 0 and h == "ff")
-                or (in_row == 1 and h == "ff")
-                or (in_row == 2 and h == "83")
-                or (in_row == 3 and h == "f8")
-                or (in_row == 4 and h == "ff")
-            ):
+            if INROW_REPLACE_TRIGGERS.get(in_row, "NOVAL") == h:
                 in_row += 1
+
+            elif in_row == 7 and h in ("48", "8b"):
+                # final
+                hex_list[i] = h
+                hex_list[i - 1] = "c0"
+                hex_list[i - 2] = "33"
+                res = True
+                break
+
             else:
                 in_row = 0
 
-            if res == 0:
-                raise UnpatchableDLL(dll_path)
+        if not res:
+            raise UnpatchableDLL(dll_path)
 
-            with open(dll_path, "wb") as f:
-                for h in hex_list:
-                    f.write(unhexlify(h))
+        with open(dll_path, "wb") as f:
+            for h in hex_list:
+                f.write(unhexlify(h))
 
-            log.info(f"{dll_path} : SUCCESSFUL PATCHING")
+        log.info(f"{dll_path} : SUCCESSFUL PATCHING")
 
 
 if __name__ == "__main__":
