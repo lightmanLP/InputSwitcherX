@@ -1,11 +1,5 @@
-# from sys import exit as sysExit
-# from time import sleep
-# from binascii import unhexlify, hexlify
-# from shutil import copyfile
-# from pathlib import Path as pathLibPath
-# from os import path as osPath, makedirs as osMakedirs, environ as env, listdir, system as cmd
-
 from typing import List
+from binascii import unhexlify, hexlify
 from pathlib import Path
 from ctypes import windll
 import logging as log
@@ -28,15 +22,26 @@ def bulk_exec(*command: str):
 
 
 class ScriptException(Exception):
-    ...
+    path: Path
+    type: int
+
+    def __init__(self, path: Path, text: str) -> None:
+        self.path = path
+        super().__init__(text)
 
 
 class FileNotExists(ScriptException):
-    path: Path
+    type: log.WARN
 
     def __init__(self, path: Path) -> None:
-        self.path = path
-        super().__init__(f"{path} not exists")
+        super().__init__(path, "file not exists!")
+
+
+class UnpatchableDLL(ScriptException):
+    type: log.ERROR
+
+    def __init__(self, path: Path) -> None:
+        super().__init__(path, "cant patch this dll!")
 
 
 class Patch:
@@ -51,17 +56,23 @@ class Patch:
                 self.dirs.append(item)
 
     def run(self):
+        has_errors = False
         log.info("Процесс патчинга начинается. Отключение explorer.exe...")
         os.system("taskkill /F /IM explorer.exe")
         time.sleep(2)
+
         for path in self.dirs:
             try:
                 self.patch_dir(path)
             except ScriptException as e:
-                ...  # TODO
+                has_errors = True
+                log.log(
+                    e.type,
+                    f"{e.path} : {e}"
+                )
         os.system("start %windir%\\explorer.exe")
 
-        if self.has_errors:
+        if has_errors:
             print("Патч завершился с ошибками. Это есть не добрый знак. Попытайтесь откатить изменения с помощью \"python offPatch.py\"")
             sys.exit(1)
         else:
@@ -94,7 +105,7 @@ class Patch:
             shutil.copyfile(str(dll_path), str(backup_path / DLL_NAME))
             (backup_path / "info.txt").write_text(dll_path)
 
-        self.processPatch()
+        self.patch_dll(dll_path)
         bulk_exec(
             # return the rights to trusted installer
             f'icacls "{dll_path}" /setowner "NT SERVICE\\TrustedInstaller" /C /L /Q',
@@ -103,89 +114,65 @@ class Patch:
             f'icacls "{dll_path}" /grant:r "*S-1-5-32-544":rx'
         )
 
-    def processPatch(self):
+    def patch_dll(self, dll_path: Path):
+        hexdata = (
+            hexlify(dll_path.read_bytes())
+            .decode("utf-8")
+        )
 
-        with open(self.filePath, 'rb') as f:
+        pointer = 0
+        hex_list = []
+        for i, h in enumerate(hexdata):
+            if not i & 1 and i != 0:
+                pointer += 1
+            if pointer < len(hex_list):
+                hex_list[pointer] += h
+            else:
+                hex_list.append(h)
 
-            hexdata = hexlify(f.read()).decode("utf-8")
+        in_row = 0
+        max_area = 40
+        res = 0
+        for i, h in enumerate(hex_list):
+            if in_row >= 5:
+                if max_area <= 0:
+                    break
 
-            i = 0
-            pointer = 0
-            hexAsList = []
+                max_area -= 1
+                hex_list[i] = "90"
 
-            for h in hexdata:
+                if (
+                    (in_row == 5 and h == "33")
+                    or (in_row == 6 and h == "c0")
+                ):
+                    in_row += 1
+                elif in_row == 7 and h in ("48", "8b"):
+                    # final
+                    hex_list[i] = h
+                    hex_list[i - 1] = "c0"
+                    hex_list[i - 2] = "33"
+                    res = 1
+                    break
 
-                if i % 2 == 0 and i != 0: pointer += 1
-
-                if not pointer < len(hexAsList): hexAsList.append(h)
-                else: hexAsList[pointer] += h
-
-                i += 1
-
-            i = 0
-            inARow = 0
-            maxArea = 40
-            res = 0
-
-            for h in hexAsList:
-
-                if inARow >= 5:
-
-                    if maxArea > 0:
-
-                        maxArea -= 1
-
-                        hexAsList[i] = "90"
-
-                        if h == "33" and inARow == 5:
-
-                            inARow += 1
-
-                        elif h == "c0" and inARow == 6:
-
-                            inARow += 1
-
-                        elif (h == "48" or h == "8b") and inARow == 7:
-
-                            # final
-
-                            hexAsList[i] = h
-                            hexAsList[i - 1] = "c0"
-                            hexAsList[i - 2] = "33"
-
-                            res = 1
-
-                            break
-
-                    else:
-
-                        break
-
-                elif h == "ff" and inARow == 0:
-                    inARow += 1
-                elif h == "ff" and inARow == 1:
-                    inARow += 1
-                elif h == "83" and inARow == 2:
-                    inARow += 1
-                elif h == "f8" and inARow == 3:
-                    inARow += 1
-                elif h == "ff" and inARow == 4:
-                    inARow += 1
-                else:
-                    inARow = 0
-
-                i += 1
+            elif (
+                (in_row == 0 and h == "ff")
+                or (in_row == 1 and h == "ff")
+                or (in_row == 2 and h == "83")
+                or (in_row == 3 and h == "f8")
+                or (in_row == 4 and h == "ff")
+            ):
+                in_row += 1
+            else:
+                in_row = 0
 
             if res == 0:
-                self.error("cant patch this dll!")
-                return False
+                raise UnpatchableDLL(dll_path)
 
-            with open(self.filePath, 'wb') as fout:
-                for h in hexAsList:
-                    fout.write(unhexlify(h))
+            with open(dll_path, "wb") as f:
+                for h in hex_list:
+                    f.write(unhexlify(h))
 
-            print(self.filePath + ": SUCCESSFUL PATCHING")
-            return True
+            log.info(f"{dll_path} : SUCCESSFUL PATCHING")
 
 
 if __name__ == "__main__":
