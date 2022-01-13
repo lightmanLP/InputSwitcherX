@@ -1,5 +1,6 @@
 from pathlib import Path
 from ctypes import windll
+import shutil
 import time
 import sys
 import os
@@ -13,7 +14,7 @@ def bulk_exec(*command: str):
 
 
 if not windll.shell32.IsUserAnAdmin():
-    PermissionError("Please run script as admin!")
+    print("Please run script as admin!")
     sys.exit(1)
 if not BACKUPS_PATH.exists() and BACKUPS_PATH.is_dir():
     print("Backup directory does not exist!")
@@ -35,7 +36,7 @@ for item in BACKUPS_PATH.iterdir():
         f'takeown /F "{info}" /A',
         f'icacls "{info}" /grant:r "*S-1-5-32-544":f'
     )
-    copyfile(item / "InputSwitch.dll", info)
+    shutil.copyfile(str(item / "InputSwitch.dll"), info)
     bulk_exec(
         f'icacls "{info}" /setowner "NT SERVICE\\TrustedInstaller" /C /L /Q',
         f'icacls "{info}" /grant:r "NT SERVICE\\TrustedInstaller":rx',
