@@ -108,7 +108,7 @@ class Patch:
         if not backup_path.exists():
             backup_path.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(str(dll_path), str(backup_path / DLL_NAME))
-            (backup_path / "info.txt").write_text(dll_path)
+            (backup_path / "info.txt").write_text(str(dll_path))
 
         self.patch_dll(dll_path)
         bulk_exec(
@@ -126,7 +126,7 @@ class Patch:
         )
 
         pointer = 0
-        hex_list = []
+        hex_list: List[str] = []
         for i, h in enumerate(hexdata):
             if not i & 1 and i != 0:
                 pointer += 1
