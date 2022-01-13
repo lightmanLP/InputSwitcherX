@@ -9,6 +9,7 @@ from typing import List
 from pathlib import Path
 from ctypes import windll
 import logging as log
+import shutil
 import time
 import sys
 import os
@@ -17,6 +18,8 @@ WIN_PATH = Path(os.environ["WINDIR"])
 SYS32_PATH = (WIN_PATH / "System32").resolve()
 WIN_SXS_PATH = WIN_PATH / "WinSxS"
 EXEC_PATH = Path(__file__).parent.absolute()
+BACKUPS_PATH = EXEC_PATH / "backup"
+DLL_NAME = "InputSwitch.dll"
 
 
 def bulk_exec(*command: str):
@@ -24,13 +27,22 @@ def bulk_exec(*command: str):
         os.system(i)
 
 
+class ScriptException(Exception):
+    ...
+
+
+class FileNotExists(ScriptException):
+    path: Path
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        super().__init__(f"{path} not exists")
+
+
 class Patch:
     dirs: List[Path]
 
     def __init__(self) -> None:
-        self.mainFileName = "InputSwitch.dll"
-        self.hasErrors = False
-
         self.dirs = [SYS32_PATH]
         for item in WIN_SXS_PATH.iterdir():
             if not item.is_dir():
@@ -42,60 +54,54 @@ class Patch:
         log.info("Процесс патчинга начинается. Отключение explorer.exe...")
         os.system("taskkill /F /IM explorer.exe")
         time.sleep(2)
-        for dir in self.dirs:
-            self.do(dir)
+        for path in self.dirs:
+            try:
+                self.patch_dir(path)
+            except ScriptException as e:
+                ...  # TODO
         os.system("start %windir%\\explorer.exe")
 
-        if self.hasErrors is True:
+        if self.has_errors:
             print("Патч завершился с ошибками. Это есть не добрый знак. Попытайтесь откатить изменения с помощью \"python offPatch.py\"")
             sys.exit(1)
-
         else:
             print("Done!")
             sys.exit(0)
 
-    def warn(self, warntext):
-        print(f"WARN! FilePath: {self.filePath} : {warntext}")
+#     def warn(self, warntext):
+#         print(f"WARN! FilePath: {self.filePath} : {warntext}")
+#
+#     def error(self, error):
+#         self.hasErrors = True
+#         print(f"ERROR! FilePath: {self.filePath} : {error}")
 
-    def error(self, error):
-        self.hasErrors = True
-        print(f"ERROR! FilePath: {self.filePath} : {error}")
+    def patch_dir(self, path: Path):
+        dll_path = path / DLL_NAME
+        if not dll_path.exists():
+            raise FileNotExists(dll_path)
 
-    def do(self, dir):
-        basename = osPath.basename(dir)
-        self.filePath = osPath.join(dir, self.mainFileName)
-        if not isExists(self.filePath):
-            self.warn("not exists")
-            return
-
-        # set group of admins as the owners of file
-        cmd("takeown /F \"" + self.filePath + "\" /A")
-
-        # give the administrator group full access to this file
-        cmd("icacls \"" + self.filePath + "\" /grant:r \"*S-1-5-32-544\":f")
+        bulk_exec(
+            # set group of admins as the owners of file
+            f'takeown /F "{dll_path}" /A',
+            # give the administrator group full access to this file
+            f'icacls "{dll_path}" /grant:r "*S-1-5-32-544":f'
+        )
 
         # backup
-        if not isExists("./backup/" + basename):
+        backup_path = BACKUPS_PATH / path.name
+        if not backup_path.exists():
+            backup_path.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(str(dll_path), str(backup_path / DLL_NAME))
+            (backup_path / "info.txt").write_text(dll_path)
 
-            backupPath = osPath.join(self.thisPath, "backup", basename, self.mainFileName)
-
-            make_dirs("./backup/" + basename)
-            copyfile(self.filePath, backupPath)
-
-            f = open(osPath.join(self.thisPath, "backup", basename, "info.txt"), "a")
-            f.write(self.filePath)
-            f.close()
-
-
-        status = self.processPatch()
-
-        # return the rights to trusted installer
-        cmd("icacls \"" + self.filePath + "\" /setowner \"NT SERVICE\TrustedInstaller\" /C /L /Q")
-
-        # give administrators and trusted installer read and execute permissions
-        cmd("icacls \"" + self.filePath + "\" /grant:r \"NT SERVICE\TrustedInstaller\":rx")
-        cmd("icacls \"" + self.filePath + "\" /grant:r \"*S-1-5-32-544\":rx")
-
+        self.processPatch()
+        bulk_exec(
+            # return the rights to trusted installer
+            f'icacls "{dll_path}" /setowner "NT SERVICE\\TrustedInstaller" /C /L /Q',
+            # give administrators and trusted installer read and execute permissions
+            f'icacls "{dll_path}" /grant:r "NT SERVICE\\TrustedInstaller":rx',
+            f'icacls "{dll_path}" /grant:r "*S-1-5-32-544":rx'
+        )
 
     def processPatch(self):
 
