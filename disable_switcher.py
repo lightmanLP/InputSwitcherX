@@ -40,14 +40,14 @@ class ScriptException(Exception):
 
 
 class FileNotExists(ScriptException):
-    type: log.WARN
+    type = log.WARN
 
     def __init__(self, path: Path) -> None:
         super().__init__(path, "file not exists!")
 
 
 class UnpatchableDLL(ScriptException):
-    type: log.ERROR
+    type = log.ERROR
 
     def __init__(self, path: Path) -> None:
         super().__init__(path, "cant patch this dll!")
