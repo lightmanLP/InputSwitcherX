@@ -141,6 +141,7 @@ class Patch:
         for i, h in enumerate(hex_list):
             if in_row >= 5:
                 if max_area <= 0:
+                    log.debug("max area exceeded")
                     break
                 max_area -= 1
                 hex_list[i] = "90"
