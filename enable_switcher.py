@@ -1,56 +1,46 @@
-from sys import exit as sysExit
-from time import sleep
-from shutil import copyfile
-from os import path as osPath, listdir, system as cmd
+from pathlib import Path
+from ctypes import windll
+import time
+import sys
+import os
 
-def isExists(path):
+BACKUPS_PATH = Path.cwd() / "backup"
 
-    result = osPath.exists(path)
-    
-    if result == False:
 
-        try:
-        
-            f = open(path)
-            f.close()
-            
-            return True
-        
-        except IOError:
-        
-            return False
-            
-            
-        return False
-        
-    return True
-    
-if not isExists("./backup"):
+def bulk_exec(*command: str):
+    for i in command:
+        os.system(i)
 
+
+if not windll.shell32.IsUserAnAdmin():
+    PermissionError("Please run script as admin!")
+    sys.exit(1)
+if not BACKUPS_PATH.exists() and BACKUPS_PATH.is_dir():
     print("Backup directory does not exist!")
-    sysExit(1)
-    
-cmd("taskkill /F /IM explorer.exe")
+    sys.exit(1)
 
-sleep(2)
+os.system("taskkill /F /IM explorer.exe")
+time.sleep(2)
 
-for dir in listdir("./backup"):
+for item in BACKUPS_PATH.iterdir():
+    if not item.is_dir():
+        continue
 
-    if osPath.isdir("./backup/" + dir):
-    
-        file = open("./backup/" + dir + "/info.txt", "r")
-        
-        filePath = file.read()
-        
-        cmd("takeown /F \"" + filePath + "\" /A")
-        cmd("icacls \"" + filePath + "\" /grant:r \"*S-1-5-32-544\":f")
-        
-        copyfile("./backup/" + dir + "/InputSwitch.dll", filePath)
-        
-        cmd("icacls \"" + filePath + "\" /setowner \"NT SERVICE\TrustedInstaller\" /C /L /Q")
-        cmd("icacls \"" + filePath + "\" /grant:r \"NT SERVICE\TrustedInstaller\":rx")
-        cmd("icacls \"" + filePath + "\" /grant:r \"*S-1-5-32-544\":rx")
-        
-cmd("start %windir%\explorer.exe")
+    info_path = item / "info.txt"
+    if not (info_path.exists() and info_path.is_file()):
+        continue
+    info = info_path.read_text()
 
+    bulk_exec(
+        f'takeown /F "{info}" /A',
+        f'icacls "{info}" /grant:r "*S-1-5-32-544":f'
+    )
+    copyfile(item / "InputSwitch.dll", info)
+    bulk_exec(
+        f'icacls "{info}" /setowner "NT SERVICE\\TrustedInstaller" /C /L /Q',
+        f'icacls "{info}" /grant:r "NT SERVICE\\TrustedInstaller":rx',
+        f'icacls "{info}" /grant:r "*S-1-5-32-544":rx'
+    )
+
+os.system("start %windir%\\explorer.exe")
 print("Done!")
