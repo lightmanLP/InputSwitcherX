@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List, Tuple
 from binascii import unhexlify, hexlify
 from pathlib import Path
 from ctypes import windll
@@ -8,21 +8,22 @@ import time
 import sys
 import os
 
+log.root.setLevel(log.INFO)
 WIN_PATH = Path(os.environ["WINDIR"])
 SYS32_PATH = (WIN_PATH / "System32").resolve()
 WIN_SXS_PATH = WIN_PATH / "WinSxS"
 EXEC_PATH = Path(__file__).parent.absolute()
 BACKUPS_PATH = EXEC_PATH / "backup"
 DLL_NAME = "InputSwitch.dll"
-INROW_REPLACE_TRIGGERS: Dict[int, str] = {
-    0: "ff",
-    1: "ff",
-    2: "83",
-    3: "f8",
-    4: "ff",
-    5: "33",
-    6: "c0",
-}
+INROW_REPLACE: Tuple[str, ...] = (
+    "ff",
+    "ff",
+    "83",
+    "f8",
+    "ff",
+    "33",
+    "c0",
+)
 
 
 def bulk_exec(*command: str):
@@ -68,13 +69,14 @@ class Patch:
         has_errors = False
         log.info("Процесс патчинга начинается. Отключение explorer.exe...")
         os.system("taskkill /F /IM explorer.exe")
-        time.sleep(2)
+        time.sleep(5)
 
         for path in self.dirs:
             try:
                 self.patch_dir(path)
             except ScriptException as e:
-                has_errors = True
+                if e.type >= log.ERROR:
+                    has_errors = True
                 log.log(
                     e.type,
                     f"{e.path} : {e}"
@@ -110,14 +112,16 @@ class Patch:
             shutil.copyfile(str(dll_path), str(backup_path / DLL_NAME))
             (backup_path / "info.txt").write_text(str(dll_path))
 
-        self.patch_dll(dll_path)
-        bulk_exec(
-            # return the rights to trusted installer
-            f'icacls "{dll_path}" /setowner "NT SERVICE\\TrustedInstaller" /C /L /Q',
-            # give administrators and trusted installer read and execute permissions
-            f'icacls "{dll_path}" /grant:r "NT SERVICE\\TrustedInstaller":rx',
-            f'icacls "{dll_path}" /grant:r "*S-1-5-32-544":rx'
-        )
+        try:
+            self.patch_dll(dll_path)
+        finally:
+            bulk_exec(
+                # return the rights to trusted installer
+                f'icacls "{dll_path}" /setowner "NT SERVICE\\TrustedInstaller" /C /L /Q',
+                # give administrators and trusted installer read and execute permissions
+                f'icacls "{dll_path}" /grant:r "NT SERVICE\\TrustedInstaller":rx',
+                f'icacls "{dll_path}" /grant:r "*S-1-5-32-544":rx'
+            )
 
     def patch_dll(self, dll_path: Path):
         hexdata = (
@@ -126,7 +130,7 @@ class Patch:
         )
 
         pointer = 0
-        hex_list: List[str] = []
+        hex_list: List[str] = list()
         for i, h in enumerate(hexdata):
             if not i & 1 and i != 0:
                 pointer += 1
@@ -146,16 +150,19 @@ class Patch:
                 max_area -= 1
                 hex_list[i] = "90"
 
-            if INROW_REPLACE_TRIGGERS.get(in_row, "NOVAL") == h:
-                in_row += 1
+                if in_row in range(5, 7) and INROW_REPLACE[in_row] == h:
+                    in_row += 1
 
-            elif in_row == 7 and h in ("48", "8b"):
-                # final
-                hex_list[i] = h
-                hex_list[i - 1] = "c0"
-                hex_list[i - 2] = "33"
-                res = True
-                break
+                elif in_row == 7 and h in ("48", "8b"):
+                    # final
+                    hex_list[i] = h
+                    hex_list[i - 1] = INROW_REPLACE[6]
+                    hex_list[i - 2] = INROW_REPLACE[5]
+                    res = True
+                    break
+
+            elif in_row in range(0, 5) and INROW_REPLACE[in_row] == h:
+                in_row += 1
 
             else:
                 in_row = 0
